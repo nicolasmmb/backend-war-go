@@ -18,9 +18,10 @@ FROM alpine:3.21
 WORKDIR /app
 
 RUN adduser -D -H -u 10001 app
-RUN mkdir -p /sockets && chown app:app /sockets
+RUN mkdir -p /sockets /resources && chown -R app:app /sockets /resources
 
 COPY --from=build /out/api /app/api
+COPY --chown=app:app resources/index.bin /resources/index.bin
 
 USER app
 EXPOSE 9999
