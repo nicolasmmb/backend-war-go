@@ -1,11 +1,11 @@
 {
-  "participants": ["Nicolas Marques"],
+  "participants": ["pedreiro.de.software"],
   "social": [
-    "https://www.linkedin.com/in/nicolasmmb/",
     "https://github.com/nicolasmmb",
-    "https://www.instagram.com/pedreiro.de.software/"
+    "https://www.instagram.com/pedreiro.de.software/",
+    "https://www.linkedin.com/in/nicolasmmb/"
   ],
-  "source-code-repo": "https://github.com/nicolasmmb/backend-war-gogo",
-  "stack": ["go", "docker", "haproxy"],
+  "source-code-repo": "https://github.com/nicolasmmb/backend-war-go",
+  "stack": ["go", "docker"],
   "open_to_work": true
 }

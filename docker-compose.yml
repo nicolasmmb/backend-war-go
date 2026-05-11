@@ -5,16 +5,12 @@ x-api-env: &api-env
   INDEX_PATH: "/resources/index.bin"
 
 x-api: &api
-  build:
-    context: .
-    dockerfile: Dockerfile
-  image: backend-war-go-api:local
+  image: ghcr.io/nicolasmmb/backend-war-go:latest
   platform: linux/amd64
   cpus: "0.42"
   mem_limit: "152m"
   volumes:
     - sockets:/sockets
-    - ./resources:/resources:ro
   networks:
     - rinha-net
 
@@ -22,7 +18,6 @@ services:
   lb:
     image: haproxy:3.0-alpine
     platform: linux/amd64
-    container_name: rinha-lb
     ports:
       - "9999:9999"
     volumes:
@@ -38,7 +33,6 @@ services:
 
   api1:
     <<: *api
-    container_name: rinha-api-1
     environment:
       <<: *api-env
       UDS_PATH: /sockets/api1.sock
@@ -46,7 +40,6 @@ services:
 
   api2:
     <<: *api
-    container_name: rinha-api-2
     environment:
       <<: *api-env
       UDS_PATH: /sockets/api2.sock
