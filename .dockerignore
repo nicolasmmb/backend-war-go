@@ -1,0 +1,8 @@
+.git
+.gitignore
+.DS_Store
+backend
+service
+repo-oficial
+*.log
+/tmp

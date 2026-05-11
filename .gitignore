@@ -1,0 +1,6 @@
+resources/normalization.json
+resources/references.bin
+.DS_Store
+backend
+original.git/**
+.original.git/**
