@@ -12,5 +12,5 @@ type Config struct {
 
 	INDEX_PATH string `default:"resources/index.bin"` // INDEX_PATH aponta para o arquivo RIVF (index.bin) usado na busca vetorial.
 
-	NPROBE int `default:"1"` // NPROBE define quantos centroides iniciais sao sondados antes da etapa completa de refinamento.
+	NPROBE int `default:"8"` // NPROBE define quantos centroides iniciais sao sondados antes da etapa completa de refinamento.
 }

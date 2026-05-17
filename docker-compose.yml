@@ -10,13 +10,19 @@ x-api: &api
     dockerfile: Dockerfile
   image: backend-war-go-api:local
   platform: linux/amd64
-  cpus: "0.42"
+  cpus: "0.4"
   mem_limit: "152m"
   volumes:
     - sockets:/sockets
     - ./resources:/resources:ro
   networks:
     - rinha-net
+  logging:
+    driver: "none"
+  ulimits:
+    nofile:
+      soft: 65535
+      hard: 65535
 
 services:
   lb:
@@ -31,10 +37,16 @@ services:
     depends_on:
       - api1
       - api2
-    cpus: "0.16"
+    cpus: "0.2"
     mem_limit: "46m"
     networks:
       - rinha-net
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
   api1:
     <<: *api
