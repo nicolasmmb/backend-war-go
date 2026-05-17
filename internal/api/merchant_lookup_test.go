@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"testing"
 )
@@ -24,8 +23,7 @@ func buildKnownMerchants(size int, seed uint64) []string {
 	return out
 }
 
-// Confirma que loop manual preserva semantica de slices.Contains.
-func TestMerchantIDInKnownMatchesLegacySlices(t *testing.T) {
+func TestMerchantIDInKnown(t *testing.T) {
 	sizes := []int{0, 1, 8, 32, 64, 65, 128, 512, 1024, 1025, 4096}
 
 	for _, size := range sizes {
@@ -41,7 +39,13 @@ func TestMerchantIDInKnownMatchesLegacySlices(t *testing.T) {
 				Merchant: MerchantData{ID: target},
 			}
 			got := merchantIDInKnown(req)
-			want := merchantIDInKnownLegacySlices(req)
+			want := false
+			for _, id := range req.Customer.KnownMerchants {
+				if id == target {
+					want = true
+					break
+				}
+			}
 			if got != want {
 				t.Fatalf("size=%d target=%q got=%v want=%v", size, target, got, want)
 			}
@@ -49,11 +53,7 @@ func TestMerchantIDInKnownMatchesLegacySlices(t *testing.T) {
 	}
 }
 
-func merchantIDInKnownLegacySlices(req *FraudRequest) bool {
-	return slices.Contains(req.Customer.KnownMerchants, req.Merchant.ID)
-}
-
-func BenchmarkMerchantIDInKnownFast(b *testing.B) {
+func BenchmarkMerchantIDInKnown(b *testing.B) {
 	sizes := []int{8, 64, 128, 512, 1024, 2048}
 	for _, size := range sizes {
 		known := buildKnownMerchants(size, merchantLookupSeed)
@@ -73,38 +73,6 @@ func BenchmarkMerchantIDInKnownFast(b *testing.B) {
 				count := 0
 				for i := 0; i < b.N; i++ {
 					if merchantIDInKnown(req) {
-						count++
-					}
-				}
-				if count == 0 && hit {
-					b.Fatal("unexpected miss on hit benchmark")
-				}
-			})
-		}
-	}
-}
-
-func BenchmarkMerchantIDInKnownLegacySlices(b *testing.B) {
-	sizes := []int{8, 64, 128, 512, 1024, 2048}
-	for _, size := range sizes {
-		known := buildKnownMerchants(size, merchantLookupSeed)
-		for _, hit := range []bool{true, false} {
-			target := "MERC-NOT-FOUND"
-			if hit && size > 0 {
-				target = known[size-1]
-			}
-
-			req := &FraudRequest{
-				Customer: CustomerData{KnownMerchants: known},
-				Merchant: MerchantData{ID: target},
-			}
-
-			name := fmt.Sprintf("n=%d/hit=%t", size, hit)
-			b.Run(name, func(b *testing.B) {
-				b.ReportAllocs()
-				count := 0
-				for i := 0; i < b.N; i++ {
-					if merchantIDInKnownLegacySlices(req) {
 						count++
 					}
 				}

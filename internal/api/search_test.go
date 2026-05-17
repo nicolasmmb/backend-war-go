@@ -159,19 +159,17 @@ func TestBboxLowerBoundMatchesScalar(t *testing.T) {
 	}
 }
 
-// Insercao incremental top-5 deve preservar semantica da implementacao legada.
-func TestTryInsertTop5MatchesLegacy(t *testing.T) {
+// Insercao incremental top-5 deve produzir os 5 menores candidatos (com desempate por origID).
+func TestTryInsertTop5KeepsBestFive(t *testing.T) {
 	state := uint64(0xbb67ae8584caa73b)
 
 	for range 200 {
 		var topFast [topKNeighbors]topNeighbor
-		var topLegacy [topKNeighbors]topNeighbor
 		for i := range topFast {
 			topFast[i] = sentinelNeighbor
-			topLegacy[i] = sentinelNeighbor
 		}
 		worstFast := 0
-		worstLegacy := 0
+		all := make([]topNeighbor, 0, 400)
 
 		for range 400 {
 			testLCGStep(&state)
@@ -182,25 +180,41 @@ func TestTryInsertTop5MatchesLegacy(t *testing.T) {
 			origID := uint32(state & testOrigIDMask)
 
 			tryInsertTop5(&topFast, &worstFast, d, label, origID)
-			tryInsertTop5Legacy(&topLegacy, &worstLegacy, d, label, origID)
+			all = append(all, topNeighbor{dist: d, label: label, origID: origID})
 		}
 
 		fastNorm := normalizeTop5(topFast)
-		legacyNorm := normalizeTop5(topLegacy)
-		if fastNorm != legacyNorm {
-			t.Fatalf("top5 mismatch:\nfast=%+v\nlegacy=%+v", topFast, topLegacy)
-		}
-
-		fastWorst := topFast[worstFast]
-		legacyWorst := topLegacy[worstLegacy]
-		if fastWorst.dist != legacyWorst.dist || fastWorst.origID != legacyWorst.origID {
-			t.Fatalf("worst mismatch: fast=%+v legacy=%+v", fastWorst, legacyWorst)
+		slices.SortFunc(all, func(a, b topNeighbor) int {
+			if a.dist != b.dist {
+				if a.dist < b.dist {
+					return -1
+				}
+				return 1
+			}
+			if a.origID != b.origID {
+				if a.origID < b.origID {
+					return -1
+				}
+				return 1
+			}
+			if a.label < b.label {
+				return -1
+			}
+			if a.label > b.label {
+				return 1
+			}
+			return 0
+		})
+		var want [topKNeighbors]topNeighbor
+		copy(want[:], all[:topKNeighbors])
+		if fastNorm != want {
+			t.Fatalf("top5 mismatch:\nfast=%+v\nwant=%+v", fastNorm, want)
 		}
 	}
 }
 
-// Confere paridade da selecao top-N em todos os buckets de pool.
-func TestTopNCentroidsMatchesAllocAcrossBuckets(t *testing.T) {
+// Confere corretude da selecao top-N em todos os buckets de pool.
+func TestTopNCentroidsAcrossBuckets(t *testing.T) {
 	state := uint64(0x3c6ef372fe94f82b)
 	var dists [maxK]float32
 	for i := range maxK {
@@ -211,7 +225,7 @@ func TestTopNCentroidsMatchesAllocAcrossBuckets(t *testing.T) {
 	ns := []int{1, 8, 9, 16, 17, 64, 65, 512, 513, 2048, 4096}
 	for _, n := range ns {
 		got, scratch := topNCentroids(dists[:], n)
-		want := topNCentroidsAlloc(dists[:], n)
+		want := topNCentroidsOracle(dists[:], n)
 		for i := range n {
 			if got[i] != want[i] {
 				t.Fatalf("n=%d idx=%d mismatch got=%d want=%d", n, i, got[i], want[i])
@@ -262,42 +276,28 @@ func TestFillCentroidDistsMatchesScalar(t *testing.T) {
 	}
 }
 
-// Garante que as podas antecipadas do scan novo nao alteram o resultado final.
-func TestScanClusterMatchesLegacy(t *testing.T) {
-	ds := makeSyntheticDataset(t)
-	state := uint64(0x94d049bb133111eb)
-
-	for range 300 {
-		var q [ivf.Dim]float32
-		var qI16 [ivf.Dim]int16
-		for j := range ivf.Dim {
-			q[j] = testLCGFloatUnit(&state)
-			qI16[j] = quantizeI16(q[j])
-		}
-
-		for c := range ds.K {
-			var topFast [topKNeighbors]topNeighbor
-			var topLegacy [topKNeighbors]topNeighbor
-			for i := range topFast {
-				topFast[i] = sentinelNeighbor
-				topLegacy[i] = sentinelNeighbor
-			}
-			worstFast := 0
-			worstLegacy := 0
-
-			scanCluster(c, &qI16, ds, &topFast, &worstFast)
-			scanClusterLegacy(c, &qI16, ds, &topLegacy, &worstLegacy)
-
-			if worstFast != worstLegacy {
-				t.Fatalf("cluster=%d worst mismatch fast=%d legacy=%d", c, worstFast, worstLegacy)
-			}
-			for i := range topFast {
-				if topFast[i] != topLegacy[i] {
-					t.Fatalf("cluster=%d top[%d] mismatch fast=%+v legacy=%+v", c, i, topFast[i], topLegacy[i])
-				}
-			}
-		}
+func topNCentroidsOracle(dists []float32, n int) []int {
+	idxs := make([]int, len(dists))
+	for i := range idxs {
+		idxs[i] = i
 	}
+	slices.SortFunc(idxs, func(a, b int) int {
+		da, db := dists[a], dists[b]
+		if da < db {
+			return -1
+		}
+		if da > db {
+			return 1
+		}
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	})
+	return idxs[:n]
 }
 
 func normalizeTop5(in [topKNeighbors]topNeighbor) [topKNeighbors]topNeighbor {

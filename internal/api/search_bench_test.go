@@ -217,22 +217,6 @@ func BenchmarkScanClusterScalar(b *testing.B) {
 	}
 }
 
-func BenchmarkScanClusterLegacy(b *testing.B) {
-	b.ReportAllocs()
-	ds := benchScanDataset
-	var top5 [topKNeighbors]topNeighbor
-	var worstIdx int
-
-	for i := 0; i < b.N; i++ {
-		for j := range top5 {
-			top5[j] = sentinelNeighbor
-		}
-		worstIdx = 0
-		scanClusterLegacy(0, &benchQueryI16, ds, &top5, &worstIdx)
-		benchScanSink += uint32(top5[0].label)
-	}
-}
-
 func BenchmarkScanClusterAVX2(b *testing.B) {
 	b.ReportAllocs()
 	ds := benchScanDataset
@@ -273,17 +257,7 @@ func BenchmarkBboxLowerBoundAVX2(b *testing.B) {
 	benchBboxSink = acc
 }
 
-func BenchmarkTopNCentroidsAlloc(b *testing.B) {
-	b.ReportAllocs()
-	var acc int
-	for i := 0; i < b.N; i++ {
-		ids := topNCentroidsAlloc(benchTopNDists[:], defaultNProbe)
-		acc += ids[0]
-	}
-	benchTopNSink = acc
-}
-
-func BenchmarkTopNCentroidsPooled(b *testing.B) {
+func BenchmarkTopNCentroids(b *testing.B) {
 	b.ReportAllocs()
 	var acc int
 	for i := 0; i < b.N; i++ {
@@ -310,29 +284,7 @@ func BenchmarkTopNCentroidsPooledByN(b *testing.B) {
 	}
 }
 
-func BenchmarkTryInsertTop5Legacy(b *testing.B) {
-	b.ReportAllocs()
-	var top5 [topKNeighbors]topNeighbor
-	var worstIdx int
-	idx := 0
-	for i := 0; i < b.N; i++ {
-		if i&63 == 0 {
-			for j := range top5 {
-				top5[j] = sentinelNeighbor
-			}
-			worstIdx = 0
-		}
-		c := benchInsertCandidates[idx]
-		tryInsertTop5Legacy(&top5, &worstIdx, c.dist, c.label, c.origID)
-		idx++
-		if idx == len(benchInsertCandidates) {
-			idx = 0
-		}
-	}
-	benchInsertSink = top5[0].origID
-}
-
-func BenchmarkTryInsertTop5Fast(b *testing.B) {
+func BenchmarkTryInsertTop5(b *testing.B) {
 	b.ReportAllocs()
 	var top5 [topKNeighbors]topNeighbor
 	var worstIdx int

@@ -383,31 +383,6 @@ func topNCentroids(dists []float32, n int) ([]int, *topNCentroidsScratch) {
 	return ids, scratch
 }
 
-// topNCentroidsAlloc mantem a versao com alocacao para benchmark A/B.
-func topNCentroidsAlloc(dists []float32, n int) []int {
-	ids := make([]int, n)
-	ds := make([]float32, n)
-	for i := range n {
-		ds[i] = float32(math.Inf(1))
-	}
-	for i, d := range dists {
-		if d >= ds[n-1] {
-			continue
-		}
-		pos := n - 1
-		for pos > 0 && d < ds[pos-1] {
-			pos--
-		}
-		for j := n - 1; j > pos; j-- {
-			ds[j] = ds[j-1]
-			ids[j] = ids[j-1]
-		}
-		ds[pos] = d
-		ids[pos] = i
-	}
-	return ids
-}
-
 // scanCluster percorre um cluster quantizado e tenta atualizar os 5 melhores candidatos globais.
 func scanCluster(c int, q *[ivf.Dim]int16, ds *ivf.Dataset, top5 *[topKNeighbors]topNeighbor, worstIdx *int) {
 	// Passo 0: resolve fatia [start,end) do cluster no vetor global e sai cedo se vazio.
@@ -496,78 +471,6 @@ func scanCluster(c int, q *[ivf.Dim]int16, ds *ivf.Dataset, top5 *[topKNeighbors
 	}
 }
 
-// scanClusterLegacy mantem a versao anterior para benchmark A/B.
-func scanClusterLegacy(c int, q *[ivf.Dim]int16, ds *ivf.Dataset, top5 *[topKNeighbors]topNeighbor, worstIdx *int) {
-	start := int(ds.Offsets[c])
-	end := int(ds.Offsets[c+1])
-	if start >= end {
-		return
-	}
-	blockStart := int(ds.BlockOffsets[c])
-	blockEnd := int(ds.BlockOffsets[c+1])
-	clusterSize := end - start
-	blocks := ds.Blocks
-
-	q0 := int32(q[0])
-	q1 := int32(q[1])
-	q2 := int32(q[2])
-	q3 := int32(q[3])
-	q4 := int32(q[4])
-	q5 := int32(q[5])
-	q6 := int32(q[6])
-	q7 := int32(q[7])
-	q8 := int32(q[8])
-	q9 := int32(q[9])
-	q10 := int32(q[10])
-	q11 := int32(q[11])
-	q12 := int32(q[12])
-	q13 := int32(q[13])
-
-	for blockLocal, blockIdx := 0, blockStart; blockIdx < blockEnd; blockLocal, blockIdx = blockLocal+1, blockIdx+1 {
-		blockBase := blockIdx * ivf.BlockStride
-		lanesInBlock := min(clusterSize-blockLocal*ivf.BlockSize, ivf.BlockSize)
-		for lane := range lanesInBlock {
-			worst := top5[*worstIdx].dist
-			base := blockBase + lane
-			var dist int64
-
-			diff0 := q0 - int32(blocks[base])
-			diff1 := q1 - int32(blocks[base+ivf.BlockSize])
-			diff2 := q2 - int32(blocks[base+2*ivf.BlockSize])
-			diff3 := q3 - int32(blocks[base+3*ivf.BlockSize])
-			dist = int64(diff0*diff0) + int64(diff1*diff1) + int64(diff2*diff2) + int64(diff3*diff3)
-			if dist > worst {
-				continue
-			}
-
-			diff4 := q4 - int32(blocks[base+4*ivf.BlockSize])
-			diff5 := q5 - int32(blocks[base+5*ivf.BlockSize])
-			diff6 := q6 - int32(blocks[base+6*ivf.BlockSize])
-			diff7 := q7 - int32(blocks[base+7*ivf.BlockSize])
-			dist += int64(diff4*diff4) + int64(diff5*diff5) + int64(diff6*diff6) + int64(diff7*diff7)
-			if dist > worst {
-				continue
-			}
-
-			diff8 := q8 - int32(blocks[base+8*ivf.BlockSize])
-			diff9 := q9 - int32(blocks[base+9*ivf.BlockSize])
-			diff10 := q10 - int32(blocks[base+10*ivf.BlockSize])
-			diff11 := q11 - int32(blocks[base+11*ivf.BlockSize])
-			dist += int64(diff8*diff8) + int64(diff9*diff9) + int64(diff10*diff10) + int64(diff11*diff11)
-			if dist > worst {
-				continue
-			}
-
-			diff12 := q12 - int32(blocks[base+12*ivf.BlockSize])
-			diff13 := q13 - int32(blocks[base+13*ivf.BlockSize])
-			dist += int64(diff12*diff12) + int64(diff13*diff13)
-
-			global := start + blockLocal*ivf.BlockSize + lane
-			tryInsertTop5(top5, worstIdx, dist, ds.Labels[global], ds.OrigIDs[global])
-		}
-	}
-}
-
 // scanClusterScalar mantem a implementacao com loop para benchmark A/B.
 func scanClusterScalar(c int, q *[ivf.Dim]int16, ds *ivf.Dataset, top5 *[topKNeighbors]topNeighbor, worstIdx *int) {
 	start := int(ds.Offsets[c])
@@ -619,26 +522,6 @@ func tryInsertTop5(top5 *[topKNeighbors]topNeighbor, worstIdx *int, d int64, lab
 		top5[i], top5[i+1] = top5[i+1], top5[i]
 	}
 	*worstIdx = 0
-}
-
-// tryInsertTop5Legacy mantem a versao anterior para benchmark e validacao de paridade.
-func tryInsertTop5Legacy(top5 *[topKNeighbors]topNeighbor, worstIdx *int, d int64, label uint8, origID uint32) {
-	worst := top5[*worstIdx]
-	better := d < worst.dist || (d == worst.dist && origID < worst.origID)
-	if !better {
-		return
-	}
-	top5[*worstIdx] = topNeighbor{dist: d, label: label, origID: origID}
-
-	wi := 0
-	for i := 1; i < topKNeighbors; i++ {
-		a := top5[i]
-		b := top5[wi]
-		if a.dist > b.dist || (a.dist == b.dist && a.origID > b.origID) {
-			wi = i
-		}
-	}
-	*worstIdx = wi
 }
 
 // bboxLowerBound calcula limite inferior por bounding box para decidir se um cluster merece varredura completa.

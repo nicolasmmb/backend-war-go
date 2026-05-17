@@ -4,7 +4,6 @@ import (
 	"backend/internal/application/fraudscore"
 	"backend/internal/ivf"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -184,26 +183,11 @@ func decodeFraudRequest(body io.Reader, out *FraudRequest) int {
 		return http.StatusRequestEntityTooLarge
 	}
 
-	// Passo 3: parseia JSON para struct alvo.
-	if err := json.Unmarshal(buf.Bytes(), out); err != nil {
+	// Passo 3: parseia JSON com parser especializado para reduzir overhead no hot path.
+	if ok := parseFraudRequestFastJSON(buf.Bytes(), out); !ok {
 		return http.StatusBadRequest
 	}
 
 	// Passo 4: sucesso sinalizado por 0.
-	return 0
-}
-
-// decodeFraudRequestLegacy mantem a versao anterior para benchmark A/B.
-func decodeFraudRequestLegacy(body io.Reader, out *FraudRequest) int {
-	raw, err := io.ReadAll(io.LimitReader(body, bodyReadLimitByte))
-	if err != nil {
-		return http.StatusBadRequest
-	}
-	if len(raw) > maxBodyBytes {
-		return http.StatusRequestEntityTooLarge
-	}
-	if err := json.Unmarshal(raw, out); err != nil {
-		return http.StatusBadRequest
-	}
 	return 0
 }
