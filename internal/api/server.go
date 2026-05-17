@@ -1,9 +1,11 @@
 package api
 
 import (
+	"backend/internal/application/fraudscore"
 	"backend/internal/ivf"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,6 +26,8 @@ const (
 	serverReadHeaderTimeout = 2 * time.Second
 	serverIdleTimeout       = 30 * time.Second
 )
+
+var ErrNilEvaluator = errors.New("nil fraudscore evaluator")
 
 // fraudResponses mapeia contagem de fraudes no top-5 para payload pronto, evitando marshal por request.
 var fraudResponses = [6][]byte{
@@ -52,18 +56,17 @@ type RunConfig struct {
 	NProbe    int
 }
 
-// Server mantem dataset compartilhado em memoria e parametros de busca do hot path.
+// Server atua como adapter HTTP e delega regra de negocio para o caso de uso.
 type Server struct {
-	ds     *ivf.Dataset
-	nprobe int
+	evaluator fraudscore.Evaluator
 }
 
-// New cria handler HTTP com dataset carregado e nprobe saneado para valor valido.
-func New(ds *ivf.Dataset, nprobe int) *Server {
-	if nprobe <= 0 {
-		nprobe = defaultNProbe
+// New cria handler HTTP e injeta dependencia de aplicacao.
+func New(evaluator fraudscore.Evaluator) (*Server, error) {
+	if evaluator == nil {
+		return nil, ErrNilEvaluator
 	}
-	return &Server{ds: ds, nprobe: nprobe}
+	return &Server{evaluator: evaluator}, nil
 }
 
 // Run inicializa dataset e sobe servidor HTTP em TCP ou Unix socket conforme configuracao.
@@ -74,7 +77,15 @@ func Run(cfg RunConfig) error {
 	}
 	defer ds.Close()
 
-	h := New(ds, cfg.NProbe)
+	useCase, err := newFraudScoreUseCase(ds, cfg.NProbe)
+	if err != nil {
+		return err
+	}
+
+	h, err := New(useCase)
+	if err != nil {
+		return err
+	}
 	srv := &http.Server{
 		Handler:           h,
 		ReadHeaderTimeout: serverReadHeaderTimeout,
@@ -117,7 +128,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 }
 
-// handleFraudScore valida body, vetorizacao e busca de vizinhos para montar resposta deterministica.
+// handleFraudScore valida body e executa o caso de uso para montar resposta deterministica.
 func (s *Server) handleFraudScore(w http.ResponseWriter, r *http.Request) {
 	// Passo 0: garante fechamento do body assim que o handler termina.
 	defer r.Body.Close()
@@ -130,15 +141,22 @@ func (s *Server) handleFraudScore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Passo 2: converte payload em vetor numerico no formato do indice.
-	query, err := Vectorize(&req)
+	// Passo 2: adapta DTO para dominio e executa caso de uso antifraude.
+	domainReq := mapToDomainFraudRequest(&req)
+	out, err := s.evaluator.Evaluate(r.Context(), fraudscore.Input{
+		Request: domainReq,
+	})
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		if errors.Is(err, fraudscore.ErrInvalidRequest) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// Passo 3: consulta IVF e obtem contagem de fraude no top-5.
-	count := min(SearchFraudCount(&query, s.ds, s.nprobe), maxFraudCount)
+	// Passo 3: mapeia resultado de dominio para payload pre-serializado.
+	count := min(out.Assessment.FraudCount, maxFraudCount)
 	resp := fraudResponses[count]
 
 	// Passo 4: devolve resposta pre-serializada para minimizar overhead por request.
