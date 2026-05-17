@@ -11,7 +11,6 @@ x-api: &api
   mem_limit: "152m"
   volumes:
     - sockets:/sockets
-    - ./resources:/resources:ro
   networks:
     - rinha-net
   logging:
