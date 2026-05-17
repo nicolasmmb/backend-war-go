@@ -1,4 +1,4 @@
-.PHONY: help data index build build-index run test fmt docker-up docker-down docker-logs docker-ps docker-build docker-push docker-publish clean
+.PHONY: help data index build build-index run test fmt docker-up docker-down docker-logs docker-ps docker-build docker-push docker-buildx-setup docker-buildx docker-publish clean
 
 DEFAULT_GOAL := help
 
@@ -10,6 +10,8 @@ GHCR_USER ?= nicolasmmb
 IMAGE_NAME ?= backend-war-go
 IMAGE_TAG ?= latest
 IMAGE ?= ghcr.io/$(GHCR_USER)/$(IMAGE_NAME)
+PLATFORMS ?= linux/amd64,linux/arm64
+BUILDER_NAME ?= multiarch-builder
 
 PORT ?= 9999
 INDEX_PATH ?= ./resources/index.bin
@@ -43,7 +45,8 @@ help:
 	@echo "  make docker-ps    - status da stack"
 	@echo "  make docker-build - builda imagem $(IMAGE):$(IMAGE_TAG)"
 	@echo "  make docker-push  - publica imagem $(IMAGE):$(IMAGE_TAG)"
-	@echo "  make docker-publish - builda e publica imagem $(IMAGE):$(IMAGE_TAG)"
+	@echo "  make docker-buildx - builda e publica multi-arch ($(PLATFORMS)) em $(IMAGE):$(IMAGE_TAG)"
+	@echo "  make docker-publish - alias para docker-buildx (multi-arch)"
 	@echo "  make clean        - remove binarios locais"
 
 resources:
@@ -98,7 +101,18 @@ docker-build:
 docker-push:
 	$(DOCKER) push $(IMAGE):$(IMAGE_TAG)
 
-docker-publish: docker-build docker-push
+docker-buildx-setup:
+	@if ! $(DOCKER) buildx inspect $(BUILDER_NAME) >/dev/null 2>&1; then \
+		$(DOCKER) buildx create --name $(BUILDER_NAME) --driver docker-container --use; \
+	else \
+		$(DOCKER) buildx use $(BUILDER_NAME); \
+	fi
+	$(DOCKER) buildx inspect --bootstrap >/dev/null
+
+docker-buildx: docker-buildx-setup
+	$(DOCKER) buildx build --platform $(PLATFORMS) -t $(IMAGE):$(IMAGE_TAG) --push .
+
+docker-publish: docker-buildx
 
 clean:
 	rm -f api build-index
