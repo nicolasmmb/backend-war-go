@@ -1,8 +1,10 @@
 x-api-env: &api-env
   PORT: "9999"
-  USE_MMAP: "true"
+  SEARCH_ENGINE: "knn_tree"
+  #SEARCH_ENGINE: "ivf"
   NPROBE: "8"
-  INDEX_PATH: "/resources/index.bin"
+  INDEX_PATH_IVF: "/resources/index_ivf.bin"
+  INDEX_PATH_KNN: "/resources/index_knn.bin"
 
 x-api: &api
   image: ghcr.io/nicolasmmb/backend-war-go:latest
