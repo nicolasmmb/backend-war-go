@@ -15,8 +15,6 @@ x-api: &api
     - sockets:/sockets
   networks:
     - rinha-net
-  logging:
-    driver: "none"
   ulimits:
     nofile:
       soft: 65535
@@ -39,8 +37,6 @@ services:
     mem_limit: "46m"
     networks:
       - rinha-net
-    logging:
-      driver: "none"
     ulimits:
       nofile:
         soft: 65535
