@@ -1,66 +1,72 @@
 x-api-env: &api-env
   PORT: "9999"
-  SEARCH_ENGINE: "knn_tree"
-  #SEARCH_ENGINE: "ivf"
-  NPROBE: "8"
-  INDEX_PATH_IVF: "/resources/index_ivf.bin"
-  INDEX_PATH_KNN: "/resources/index_knn.bin"
+  SEARCH_ENGINE: ${SEARCH_ENGINE:-knn_tree} # knn_tree or ivf
+  NPROBE: ${NPROBE:-8}
 
 x-api: &api
   image: ghcr.io/nicolasmmb/backend-war-go:latest
+  pull_policy: always
   platform: linux/amd64
-  cpus: "0.4"
-  mem_limit: "152m"
-  volumes:
-    - sockets:/sockets
+  restart: always
+
   networks:
     - rinha-net
+
+  environment:
+    <<: *api-env
+
+  cpus: "0.4"
+  cpuset: "0"
+  mem_limit: "152m"
   ulimits:
     nofile:
       soft: 65535
       hard: 65535
+    memlock:
+      soft: -1
+      hard: -1
+  logging:
+    driver: "none"
 
 services:
   lb:
     image: haproxy:3.0-alpine
+    pull_policy: always
     platform: linux/amd64
     container_name: rinha-lb
+    restart: always
+
+    networks:
+      - rinha-net
+
     ports:
       - "9999:9999"
+
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-      - sockets:/sockets
+
     depends_on:
       - api1
       - api2
+
     cpus: "0.2"
     mem_limit: "46m"
-    networks:
-      - rinha-net
     ulimits:
       nofile:
         soft: 65535
         hard: 65535
 
+    logging:
+      driver: "none"
+
   api1:
     <<: *api
     container_name: rinha-api-1
-    environment:
-      <<: *api-env
-      UDS_PATH: /sockets/api1.sock
-      UDS_MODE: "438"
 
   api2:
     <<: *api
     container_name: rinha-api-2
-    environment:
-      <<: *api-env
-      UDS_PATH: /sockets/api2.sock
-      UDS_MODE: "438"
 
 networks:
   rinha-net:
     driver: bridge
-
-volumes:
-  sockets:
